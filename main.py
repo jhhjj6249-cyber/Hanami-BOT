@@ -1,53 +1,55 @@
 import os
 import telebot
 import requests
-import time
-from telebot import types
+from flask import Flask
+from threading import Thread
 
-# Lấy Token từ Environment Variables (Render Settings)
+# --- CẤU HÌNH HỆ THỐNG ---
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GROQ_KEY = os.getenv('GROQ_API_KEY')
 
-bot = telebot.TeleBot(TOKEN, threaded=True, num_threads=50)
-session = requests.Session()
+bot = telebot.TeleBot(TOKEN, threaded=True)
+app = Flask(__name__)
 
+# Web server mini để Render không báo lỗi
+@app.route('/')
+def home():
+    return "Bot is Running!"
+
+def run_web():
+    app.run(host='0.0.manual', port=int(os.environ.get('PORT', 8080)))
+
+# --- LOGIC AI ---
 def ask_ai(prompt):
     url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {GROQ_KEY}"}
     payload = {
-        "model": "llama3-8b-8192", 
+        "model": "llama-3-8b-8192",
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
-        "stream": False
+        "temperature": 0.2
     }
     try:
-        res = session.post(url, headers=headers, json=payload, timeout=10)
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
         return res.json()['choices'][0]['message']['content']
-    except Exception as e:
-        return f"⚠️ Hệ thống bận: {str(e)}"
+    except:
+        return "⚠️ Lỗi kết nối AI."
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🌐 RENDER CLOUD", callback_data="none"))
-    
-    welcome = (
-        "🚀 **NEXUS AI v6.0 ONLINE**\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "📡 **Host:** `Render.com` (24/7)\n"
-        "⚡ **Speed:** `Extreme High Speed`\n"
-        "🤖 **Model:** `Llama 3 (8B)`\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "💬 *Hãy gửi tin nhắn để trải nghiệm!*"
-    )
-    bot.send_message(message.chat.id, welcome, parse_mode='Markdown', reply_markup=markup)
+    bot.reply_to(message, "🚀 **NEXUS RENDER CLOUD ONLINE v7.0**\nĐã sẵn sàng phản hồi siêu tốc!", parse_mode='Markdown')
 
 @bot.message_handler(func=lambda message: True)
 def chat(message):
+    bot.send_chat_action(message.chat.id, 'typing')
     response = ask_ai(message.text)
-    bot.reply_to(message, response, parse_mode='Markdown')
+    bot.reply_to(message, response)
 
+# --- CHẠY SONG SONG ---
 if __name__ == "__main__":
-    print("🤖 Bot is starting on Render...")
-    bot.infinity_polling(timeout=20, long_polling_timeout=10)
-
+    # Chạy Web Server ở luồng riêng
+    t = Thread(target=run_web)
+    t.start()
+    
+    # Chạy Bot Telegram
+    print("🤖 Bot is starting...")
+    bot.infinity_polling()
